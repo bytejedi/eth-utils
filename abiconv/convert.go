@@ -1,11 +1,9 @@
-package abi
+package abiconv
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
 	"strconv"
 
 	ethabi "github.com/ethereum/go-ethereum/accounts/abi"
@@ -61,49 +59,30 @@ func stringToInt(ty ethabi.Type, src string) (interface{}, error) {
 	return dst, nil
 }
 
-func JsonToGoType(ty ethabi.Type, j string) (interface{}, error) {
-	var src interface{}
-	err := json.Unmarshal([]byte(j), &src)
-	if err != nil {
-		return nil, err
+func StringToGoType(ty ethabi.Type, src string) (interface{}, error) {
+	switch ty.T {
+	case ethabi.AddressTy:
+		return hexToAddress(src)
+	case ethabi.IntTy, ethabi.UintTy:
+		return stringToInt(ty, src)
+	default:
+		return nil, fmt.Errorf("cannot convert %T to Golang type", src)
 	}
+}
 
-	if ty.T == ethabi.SliceTy || ty.T == ethabi.ArrayTy {
-
-		if ty.Elem.T == ethabi.AddressTy {
-			var tmp = src.([]string)
-			var dst []ethcmn.Address
-			for _, v := range tmp {
-				addr, err := hexToAddress(v)
-				if err != nil {
-					return nil, err
-				}
-				dst = append(dst, addr)
+func StringSliceToGoType(ty ethabi.Type, src []string) (interface{}, error) {
+	switch ty.T {
+	case ethabi.SliceTy, ethabi.ArrayTy:
+		var dst []interface{}
+		for _, str := range src {
+			data, err := StringToGoType(*ty.Elem, str)
+			if err != nil {
+				return nil, err
 			}
-			return dst, nil
+			dst = append(dst, data)
 		}
-
-		if (ty.Elem.T == ethabi.IntTy || ty.Elem.T == ethabi.UintTy) && reflect.TypeOf(src).Elem().Kind() == reflect.Interface {
-			var tmp = src.([]string)
-			var dst []interface{}
-			for _, v := range tmp {
-				i, err := stringToInt(ty, v)
-				if err != nil {
-					return nil, err
-				}
-				dst = append(dst, i)
-			}
-			return dst, nil
-		}
+		return dst, nil
+	default:
+		return nil, fmt.Errorf("cannot convert %T to Golang type", src)
 	}
-
-	if ty.T == ethabi.AddressTy {
-		return hexToAddress(src.(string))
-	}
-
-	if (ty.T == ethabi.IntTy || ty.T == ethabi.UintTy) && reflect.TypeOf(src).Kind() == reflect.String {
-		return stringToInt(ty, src.(string))
-	}
-
-	return nil, fmt.Errorf("cannot convert %T to Golang type", src)
 }
